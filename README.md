@@ -1,1 +1,1 @@
-# jburpee17.github.io
+# GeoGames
