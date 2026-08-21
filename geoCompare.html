@@ -4,17 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Geo Compare</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0b0f14;--surface:#131920;--border:#1e2a35;--muted:#3a4f62;--text:#d4e4f0;--subtle:#6e8fa8;--accent-a:#00d4ff;--accent-b:#ff6b35;--accent-c:#7fff6b;--panel-w:360px}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:"DM Sans",sans-serif;overflow:hidden}
 #app{display:flex;height:100vh;width:100vw}
-#sidebar{width:var(--panel-w);min-width:var(--panel-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:1000;overflow:hidden}
+#sidebar{width:var(--panel-w);min-width:var(--panel-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:1000;overflow:hidden;transition:width .25s ease,min-width .25s ease}
+#sidebar.collapsed{width:0;min-width:0;border-right:none}
 #map-wrap{flex:1;position:relative}
-#map{width:100%;height:100%}
+#sidebar-toggle{position:absolute;top:16px;left:-14px;width:28px;height:28px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--subtle);display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;cursor:pointer;z-index:1100;transition:left .25s ease,transform .25s ease,color .2s,border-color .2s;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+#sidebar-toggle:hover{color:var(--accent-a);border-color:var(--accent-a)}
+#sidebar-toggle.collapsed{transform:rotate(180deg)}
+#map{width:100%;height:100%;background:var(--bg);cursor:grab}
+#map:active{cursor:grabbing}
+#zoom-controls{position:absolute;top:16px;right:16px;display:flex;flex-direction:column;z-index:900;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+#zoom-controls button{width:30px;height:30px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+#zoom-controls button:first-child{border-bottom:none;border-radius:6px 6px 0 0}
+#zoom-controls button:last-child{border-radius:0 0 6px 6px}
+#zoom-controls button:hover{color:var(--accent-a)}
 #header{padding:22px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
 #header .wordmark{font-family:"Bebas Neue",sans-serif;font-size:34px;letter-spacing:6px;color:var(--accent-a);line-height:1}
 #header .tagline{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--subtle);margin-top:4px}
@@ -25,6 +34,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:"DM San
 #search-input:focus{border-color:var(--accent-a)}
 #country-list-wrap{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--muted) transparent}
 #country-list{padding:6px 0}
+.continent-header{padding:14px 20px 6px;font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--accent-a)}
+.continent-header:first-child{padding-top:8px}
 .country-item{display:flex;align-items:center;gap:10px;padding:8px 20px;cursor:pointer;transition:background .12s;user-select:none}
 .country-item:hover{background:rgba(0,212,255,.05)}
 .country-item .flag{font-size:18px;line-height:1;width:26px;text-align:center;flex-shrink:0}
@@ -58,15 +69,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:"DM San
 .cp-country-b .cp-iso{color:var(--accent-b)}
 .cp-vs{padding:0 14px;display:flex;align-items:center;font-family:"Bebas Neue",sans-serif;font-size:18px;letter-spacing:2px;color:var(--muted)}
 .cp-stats{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
-.stat-row{display:flex;flex-direction:column;gap:6px}
-.stat-label{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--subtle);display:flex;justify-content:space-between;align-items:center;font-weight:500}
-.stat-ratio{font-family:"DM Mono",monospace;color:var(--accent-c);font-size:11px;font-weight:500}
-.stat-bar-wrap{display:flex;align-items:center;gap:8px}
-.stat-val{font-family:"DM Mono",monospace;font-size:13.5px;font-weight:500;letter-spacing:.2px;min-width:108px;color:var(--text)}
-.stat-val.right{text-align:right}
+.stat-row{display:flex;flex-direction:column;gap:8px}
+.stat-label{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--subtle);font-weight:500}
+.stat-bar-wrap{display:flex;align-items:flex-end;gap:8px}
+.stat-side{display:flex;flex-direction:column;gap:3px;min-width:108px}
+.stat-side-a{align-items:flex-end}
+.stat-side-b{align-items:flex-start}
+.stat-val{font-family:"DM Mono",monospace;font-size:16px;font-weight:600;letter-spacing:.2px;color:var(--text)}
+.stat-ratio-badge{font-family:"DM Mono",monospace;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:10px;white-space:nowrap}
+.stat-ratio-badge .arrow{font-size:8px}
+.stat-ratio-badge.side-a{color:var(--accent-a);background:rgba(0,212,255,.12)}
+.stat-ratio-badge.side-b{color:var(--accent-b);background:rgba(255,107,53,.12)}
 .stat-row.single{flex-direction:row;justify-content:space-between;align-items:center;gap:12px}
 .stat-row.single .stat-label{flex:1}
-.stat-val-single{font-family:"DM Mono",monospace;font-size:14px;font-weight:600;letter-spacing:.2px;color:var(--text)}
+.stat-val-single{font-family:"DM Mono",monospace;font-size:17px;font-weight:600;letter-spacing:.2px;color:var(--text)}
 .bar-track{flex:1;height:6px;background:var(--border);border-radius:3px;position:relative;display:flex;align-items:center}
 .bar-fill-a,.bar-fill-b{position:absolute;height:6px;border-radius:3px;transition:width .6s cubic-bezier(.25,1,.5,1)}
 .bar-fill-a{right:50%;background:var(--accent-a);transform-origin:right}
@@ -77,8 +93,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:"DM San
 @keyframes spin{to{transform:rotate(360deg)}}
 .cp-error{padding:20px;color:var(--accent-b);font-size:13px;text-align:center}
 .cp-note{font-size:10px;color:var(--muted);text-align:center;padding:8px 16px 12px;letter-spacing:.5px}
-/* CartoDB dark tiles - no filter needed */
-.leaflet-tooltip{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:"DM Sans",sans-serif;font-size:13px;padding:5px 11px;border-radius:6px;box-shadow:none}
+.country-path{fill:#1e3a4a;stroke:#2a4a5e;stroke-width:.8px;vector-effect:non-scaling-stroke;cursor:pointer;transition:fill .15s,stroke .15s}
+.country-path:hover:not(.selected-a):not(.selected-b){fill:#4a9ab5;stroke:#6bc8e0}
+.country-path.selected-a{fill:#00d4ff;fill-opacity:.45;stroke:#00d4ff;stroke-width:2px}
+.country-path.selected-b{fill:#ff6b35;fill-opacity:.45;stroke:#ff6b35;stroke-width:2px}
+.country-label{font-size:9px;font-family:"DM Sans",sans-serif;fill:var(--text);paint-order:stroke;stroke:var(--bg);stroke-width:3px;stroke-linejoin:round;text-anchor:middle;dominant-baseline:central;pointer-events:none;opacity:.85;transition:opacity .15s}
+#map.zoom-far .country-label{display:none}
+#map.zoom-near .country-label{font-size:12px}
 #loader-overlay{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .5s}
 #loader-overlay .wordmark{font-family:"Bebas Neue",sans-serif;font-size:54px;letter-spacing:12px;color:var(--accent-a)}
 #loader-overlay .sub{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--subtle)}
@@ -120,7 +141,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:"DM San
     </div>
   </div>
   <div id="map-wrap">
-    <div id="map"></div>
+    <button id="sidebar-toggle" title="Collapse sidebar" aria-label="Collapse sidebar">‹</button>
+    <svg id="map" viewBox="0 0 960 500" preserveAspectRatio="xMidYMid meet"></svg>
+    <div id="zoom-controls">
+      <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+    </div>
     <div id="map-hint">Click a country on the map or search the sidebar list to select</div>
     <div id="compare-panel" class="hidden">
       <div class="cp-header">
@@ -144,7 +170,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:"DM San
 <script>
 // ── Embedded country metadata (216 countries, iso2/iso3/english name)
 // 216 countries
-const COUNTRY_META = [{"iso2":"AW","iso3":"ABW","eng":"Aruba"},{"iso2":"AF","iso3":"AFG","eng":"Afghanistan"},{"iso2":"AO","iso3":"AGO","eng":"Angola"},{"iso2":"AL","iso3":"ALB","eng":"Albania"},{"iso2":"AD","iso3":"AND","eng":"Andorra"},{"iso2":"AE","iso3":"ARE","eng":"United Arab Emirates"},{"iso2":"AR","iso3":"ARG","eng":"Argentina"},{"iso2":"AM","iso3":"ARM","eng":"Armenia"},{"iso2":"AS","iso3":"ASM","eng":"American Samoa"},{"iso2":"AG","iso3":"ATG","eng":"Antigua and Barbuda"},{"iso2":"AU","iso3":"AUS","eng":"Australia"},{"iso2":"AT","iso3":"AUT","eng":"Austria"},{"iso2":"AZ","iso3":"AZE","eng":"Azerbaijan"},{"iso2":"BI","iso3":"BDI","eng":"Burundi"},{"iso2":"BE","iso3":"BEL","eng":"Belgium"},{"iso2":"BJ","iso3":"BEN","eng":"Benin"},{"iso2":"BF","iso3":"BFA","eng":"Burkina Faso"},{"iso2":"BD","iso3":"BGD","eng":"Bangladesh"},{"iso2":"BG","iso3":"BGR","eng":"Bulgaria"},{"iso2":"BH","iso3":"BHR","eng":"Bahrain"},{"iso2":"BS","iso3":"BHS","eng":"Bahamas"},{"iso2":"BA","iso3":"BIH","eng":"Bosnia and Herzegovina"},{"iso2":"BY","iso3":"BLR","eng":"Belarus"},{"iso2":"BZ","iso3":"BLZ","eng":"Belize"},{"iso2":"BM","iso3":"BMU","eng":"Bermuda"},{"iso2":"BO","iso3":"BOL","eng":"Bolivia"},{"iso2":"BR","iso3":"BRA","eng":"Brazil"},{"iso2":"BB","iso3":"BRB","eng":"Barbados"},{"iso2":"BN","iso3":"BRN","eng":"Brunei"},{"iso2":"BT","iso3":"BTN","eng":"Bhutan"},{"iso2":"BW","iso3":"BWA","eng":"Botswana"},{"iso2":"CF","iso3":"CAF","eng":"Central African Republic"},{"iso2":"CA","iso3":"CAN","eng":"Canada"},{"iso2":"CH","iso3":"CHE","eng":"Switzerland"},{"iso2":"CL","iso3":"CHL","eng":"Chile"},{"iso2":"CN","iso3":"CHN","eng":"China"},{"iso2":"CI","iso3":"CIV","eng":"Ivory Coast"},{"iso2":"CM","iso3":"CMR","eng":"Cameroon"},{"iso2":"CD","iso3":"COD","eng":"DR Congo"},{"iso2":"CG","iso3":"COG","eng":"Congo"},{"iso2":"CO","iso3":"COL","eng":"Colombia"},{"iso2":"KM","iso3":"COM","eng":"Comoros"},{"iso2":"CV","iso3":"CPV","eng":"Cape Verde"},{"iso2":"CR","iso3":"CRI","eng":"Costa Rica"},{"iso2":"CU","iso3":"CUB","eng":"Cuba"},{"iso2":"CW","iso3":"CUW","eng":"Curaçao"},{"iso2":"KY","iso3":"CYM","eng":"Cayman Islands"},{"iso2":"CY","iso3":"CYP","eng":"Cyprus"},{"iso2":"CZ","iso3":"CZE","eng":"Czechia"},{"iso2":"DE","iso3":"DEU","eng":"Germany"},{"iso2":"DJ","iso3":"DJI","eng":"Djibouti"},{"iso2":"DM","iso3":"DMA","eng":"Dominica"},{"iso2":"DK","iso3":"DNK","eng":"Denmark"},{"iso2":"DO","iso3":"DOM","eng":"Dominican Republic"},{"iso2":"DZ","iso3":"DZA","eng":"Algeria"},{"iso2":"EC","iso3":"ECU","eng":"Ecuador"},{"iso2":"EG","iso3":"EGY","eng":"Egypt"},{"iso2":"ER","iso3":"ERI","eng":"Eritrea"},{"iso2":"ES","iso3":"ESP","eng":"Spain"},{"iso2":"EE","iso3":"EST","eng":"Estonia"},{"iso2":"ET","iso3":"ETH","eng":"Ethiopia"},{"iso2":"FI","iso3":"FIN","eng":"Finland"},{"iso2":"FJ","iso3":"FJI","eng":"Fiji"},{"iso2":"FR","iso3":"FRA","eng":"France"},{"iso2":"FO","iso3":"FRO","eng":"Faroe Islands"},{"iso2":"FM","iso3":"FSM","eng":"Micronesia"},{"iso2":"GA","iso3":"GAB","eng":"Gabon"},{"iso2":"GB","iso3":"GBR","eng":"United Kingdom"},{"iso2":"GE","iso3":"GEO","eng":"Georgia"},{"iso2":"GH","iso3":"GHA","eng":"Ghana"},{"iso2":"GI","iso3":"GIB","eng":"Gibraltar"},{"iso2":"GN","iso3":"GIN","eng":"Guinea"},{"iso2":"GM","iso3":"GMB","eng":"Gambia"},{"iso2":"GW","iso3":"GNB","eng":"Guinea-Bissau"},{"iso2":"GQ","iso3":"GNQ","eng":"Equatorial Guinea"},{"iso2":"GR","iso3":"GRC","eng":"Greece"},{"iso2":"GD","iso3":"GRD","eng":"Grenada"},{"iso2":"GL","iso3":"GRL","eng":"Greenland"},{"iso2":"GT","iso3":"GTM","eng":"Guatemala"},{"iso2":"GU","iso3":"GUM","eng":"Guam"},{"iso2":"GY","iso3":"GUY","eng":"Guyana"},{"iso2":"HK","iso3":"HKG","eng":"Hong Kong"},{"iso2":"HN","iso3":"HND","eng":"Honduras"},{"iso2":"HR","iso3":"HRV","eng":"Croatia"},{"iso2":"HT","iso3":"HTI","eng":"Haiti"},{"iso2":"HU","iso3":"HUN","eng":"Hungary"},{"iso2":"ID","iso3":"IDN","eng":"Indonesia"},{"iso2":"IM","iso3":"IMN","eng":"Isle of Man"},{"iso2":"IN","iso3":"IND","eng":"India"},{"iso2":"IE","iso3":"IRL","eng":"Ireland"},{"iso2":"IR","iso3":"IRN","eng":"Iran"},{"iso2":"IQ","iso3":"IRQ","eng":"Iraq"},{"iso2":"IS","iso3":"ISL","eng":"Iceland"},{"iso2":"IL","iso3":"ISR","eng":"Israel"},{"iso2":"IT","iso3":"ITA","eng":"Italy"},{"iso2":"JM","iso3":"JAM","eng":"Jamaica"},{"iso2":"JO","iso3":"JOR","eng":"Jordan"},{"iso2":"JP","iso3":"JPN","eng":"Japan"},{"iso2":"KZ","iso3":"KAZ","eng":"Kazakhstan"},{"iso2":"KE","iso3":"KEN","eng":"Kenya"},{"iso2":"KG","iso3":"KGZ","eng":"Kyrgyzstan"},{"iso2":"KH","iso3":"KHM","eng":"Cambodia"},{"iso2":"KI","iso3":"KIR","eng":"Kiribati"},{"iso2":"KN","iso3":"KNA","eng":"Saint Kitts and Nevis"},{"iso2":"KR","iso3":"KOR","eng":"South Korea"},{"iso2":"XK","iso3":"UNK","eng":"Kosovo"},{"iso2":"KW","iso3":"KWT","eng":"Kuwait"},{"iso2":"LA","iso3":"LAO","eng":"Laos"},{"iso2":"LB","iso3":"LBN","eng":"Lebanon"},{"iso2":"LR","iso3":"LBR","eng":"Liberia"},{"iso2":"LY","iso3":"LBY","eng":"Libya"},{"iso2":"LC","iso3":"LCA","eng":"Saint Lucia"},{"iso2":"LI","iso3":"LIE","eng":"Liechtenstein"},{"iso2":"LK","iso3":"LKA","eng":"Sri Lanka"},{"iso2":"LS","iso3":"LSO","eng":"Lesotho"},{"iso2":"LT","iso3":"LTU","eng":"Lithuania"},{"iso2":"LU","iso3":"LUX","eng":"Luxembourg"},{"iso2":"LV","iso3":"LVA","eng":"Latvia"},{"iso2":"MO","iso3":"MAC","eng":"Macau"},{"iso2":"MF","iso3":"MAF","eng":"Saint Martin"},{"iso2":"MA","iso3":"MAR","eng":"Morocco"},{"iso2":"MC","iso3":"MCO","eng":"Monaco"},{"iso2":"MD","iso3":"MDA","eng":"Moldova"},{"iso2":"MG","iso3":"MDG","eng":"Madagascar"},{"iso2":"MV","iso3":"MDV","eng":"Maldives"},{"iso2":"MX","iso3":"MEX","eng":"Mexico"},{"iso2":"MH","iso3":"MHL","eng":"Marshall Islands"},{"iso2":"MK","iso3":"MKD","eng":"North Macedonia"},{"iso2":"ML","iso3":"MLI","eng":"Mali"},{"iso2":"MT","iso3":"MLT","eng":"Malta"},{"iso2":"MM","iso3":"MMR","eng":"Myanmar"},{"iso2":"ME","iso3":"MNE","eng":"Montenegro"},{"iso2":"MN","iso3":"MNG","eng":"Mongolia"},{"iso2":"MP","iso3":"MNP","eng":"Northern Mariana Islands"},{"iso2":"MZ","iso3":"MOZ","eng":"Mozambique"},{"iso2":"MR","iso3":"MRT","eng":"Mauritania"},{"iso2":"MU","iso3":"MUS","eng":"Mauritius"},{"iso2":"MW","iso3":"MWI","eng":"Malawi"},{"iso2":"MY","iso3":"MYS","eng":"Malaysia"},{"iso2":"NA","iso3":"NAM","eng":"Namibia"},{"iso2":"NC","iso3":"NCL","eng":"New Caledonia"},{"iso2":"NE","iso3":"NER","eng":"Niger"},{"iso2":"NG","iso3":"NGA","eng":"Nigeria"},{"iso2":"NI","iso3":"NIC","eng":"Nicaragua"},{"iso2":"NL","iso3":"NLD","eng":"Netherlands"},{"iso2":"NO","iso3":"NOR","eng":"Norway"},{"iso2":"NP","iso3":"NPL","eng":"Nepal"},{"iso2":"NR","iso3":"NRU","eng":"Nauru"},{"iso2":"NZ","iso3":"NZL","eng":"New Zealand"},{"iso2":"OM","iso3":"OMN","eng":"Oman"},{"iso2":"PK","iso3":"PAK","eng":"Pakistan"},{"iso2":"PA","iso3":"PAN","eng":"Panama"},{"iso2":"PE","iso3":"PER","eng":"Peru"},{"iso2":"PH","iso3":"PHL","eng":"Philippines"},{"iso2":"PW","iso3":"PLW","eng":"Palau"},{"iso2":"PG","iso3":"PNG","eng":"Papua New Guinea"},{"iso2":"PL","iso3":"POL","eng":"Poland"},{"iso2":"PR","iso3":"PRI","eng":"Puerto Rico"},{"iso2":"KP","iso3":"PRK","eng":"North Korea"},{"iso2":"PT","iso3":"PRT","eng":"Portugal"},{"iso2":"PY","iso3":"PRY","eng":"Paraguay"},{"iso2":"PS","iso3":"PSE","eng":"Palestine"},{"iso2":"PF","iso3":"PYF","eng":"French Polynesia"},{"iso2":"QA","iso3":"QAT","eng":"Qatar"},{"iso2":"RO","iso3":"ROU","eng":"Romania"},{"iso2":"RU","iso3":"RUS","eng":"Russia"},{"iso2":"RW","iso3":"RWA","eng":"Rwanda"},{"iso2":"SA","iso3":"SAU","eng":"Saudi Arabia"},{"iso2":"SD","iso3":"SDN","eng":"Sudan"},{"iso2":"SN","iso3":"SEN","eng":"Senegal"},{"iso2":"SG","iso3":"SGP","eng":"Singapore"},{"iso2":"SB","iso3":"SLB","eng":"Solomon Islands"},{"iso2":"SL","iso3":"SLE","eng":"Sierra Leone"},{"iso2":"SV","iso3":"SLV","eng":"El Salvador"},{"iso2":"SM","iso3":"SMR","eng":"San Marino"},{"iso2":"SO","iso3":"SOM","eng":"Somalia"},{"iso2":"RS","iso3":"SRB","eng":"Serbia"},{"iso2":"SS","iso3":"SSD","eng":"South Sudan"},{"iso2":"ST","iso3":"STP","eng":"São Tomé and Príncipe"},{"iso2":"SR","iso3":"SUR","eng":"Suriname"},{"iso2":"SK","iso3":"SVK","eng":"Slovakia"},{"iso2":"SI","iso3":"SVN","eng":"Slovenia"},{"iso2":"SE","iso3":"SWE","eng":"Sweden"},{"iso2":"SZ","iso3":"SWZ","eng":"Eswatini"},{"iso2":"SX","iso3":"SXM","eng":"Sint Maarten"},{"iso2":"SC","iso3":"SYC","eng":"Seychelles"},{"iso2":"SY","iso3":"SYR","eng":"Syria"},{"iso2":"TC","iso3":"TCA","eng":"Turks and Caicos Islands"},{"iso2":"TD","iso3":"TCD","eng":"Chad"},{"iso2":"TG","iso3":"TGO","eng":"Togo"},{"iso2":"TH","iso3":"THA","eng":"Thailand"},{"iso2":"TJ","iso3":"TJK","eng":"Tajikistan"},{"iso2":"TM","iso3":"TKM","eng":"Turkmenistan"},{"iso2":"TL","iso3":"TLS","eng":"Timor-Leste"},{"iso2":"TO","iso3":"TON","eng":"Tonga"},{"iso2":"TT","iso3":"TTO","eng":"Trinidad and Tobago"},{"iso2":"TN","iso3":"TUN","eng":"Tunisia"},{"iso2":"TR","iso3":"TUR","eng":"Türkiye"},{"iso2":"TV","iso3":"TUV","eng":"Tuvalu"},{"iso2":"TZ","iso3":"TZA","eng":"Tanzania"},{"iso2":"UG","iso3":"UGA","eng":"Uganda"},{"iso2":"UA","iso3":"UKR","eng":"Ukraine"},{"iso2":"UY","iso3":"URY","eng":"Uruguay"},{"iso2":"US","iso3":"USA","eng":"United States"},{"iso2":"UZ","iso3":"UZB","eng":"Uzbekistan"},{"iso2":"VC","iso3":"VCT","eng":"Saint Vincent and the Grenadines"},{"iso2":"VE","iso3":"VEN","eng":"Venezuela"},{"iso2":"VG","iso3":"VGB","eng":"British Virgin Islands"},{"iso2":"VI","iso3":"VIR","eng":"United States Virgin Islands"},{"iso2":"VN","iso3":"VNM","eng":"Vietnam"},{"iso2":"VU","iso3":"VUT","eng":"Vanuatu"},{"iso2":"WS","iso3":"WSM","eng":"Samoa"},{"iso2":"YE","iso3":"YEM","eng":"Yemen"},{"iso2":"ZA","iso3":"ZAF","eng":"South Africa"},{"iso2":"ZM","iso3":"ZMB","eng":"Zambia"},{"iso2":"ZW","iso3":"ZWE","eng":"Zimbabwe"}] ;
+const COUNTRY_META = [{"iso2":"AW","iso3":"ABW","eng":"Aruba","continent":"North America"},{"iso2":"AF","iso3":"AFG","eng":"Afghanistan","continent":"Asia"},{"iso2":"AO","iso3":"AGO","eng":"Angola","continent":"Africa"},{"iso2":"AL","iso3":"ALB","eng":"Albania","continent":"Europe"},{"iso2":"AD","iso3":"AND","eng":"Andorra","continent":"Europe"},{"iso2":"AE","iso3":"ARE","eng":"United Arab Emirates","continent":"Asia"},{"iso2":"AR","iso3":"ARG","eng":"Argentina","continent":"South America"},{"iso2":"AM","iso3":"ARM","eng":"Armenia","continent":"Asia"},{"iso2":"AS","iso3":"ASM","eng":"American Samoa","continent":"Oceania"},{"iso2":"AG","iso3":"ATG","eng":"Antigua and Barbuda","continent":"North America"},{"iso2":"AU","iso3":"AUS","eng":"Australia","continent":"Oceania"},{"iso2":"AT","iso3":"AUT","eng":"Austria","continent":"Europe"},{"iso2":"AZ","iso3":"AZE","eng":"Azerbaijan","continent":"Asia"},{"iso2":"BI","iso3":"BDI","eng":"Burundi","continent":"Africa"},{"iso2":"BE","iso3":"BEL","eng":"Belgium","continent":"Europe"},{"iso2":"BJ","iso3":"BEN","eng":"Benin","continent":"Africa"},{"iso2":"BF","iso3":"BFA","eng":"Burkina Faso","continent":"Africa"},{"iso2":"BD","iso3":"BGD","eng":"Bangladesh","continent":"Asia"},{"iso2":"BG","iso3":"BGR","eng":"Bulgaria","continent":"Europe"},{"iso2":"BH","iso3":"BHR","eng":"Bahrain","continent":"Asia"},{"iso2":"BS","iso3":"BHS","eng":"Bahamas","continent":"North America"},{"iso2":"BA","iso3":"BIH","eng":"Bosnia and Herzegovina","continent":"Europe"},{"iso2":"BY","iso3":"BLR","eng":"Belarus","continent":"Europe"},{"iso2":"BZ","iso3":"BLZ","eng":"Belize","continent":"North America"},{"iso2":"BM","iso3":"BMU","eng":"Bermuda","continent":"North America"},{"iso2":"BO","iso3":"BOL","eng":"Bolivia","continent":"South America"},{"iso2":"BR","iso3":"BRA","eng":"Brazil","continent":"South America"},{"iso2":"BB","iso3":"BRB","eng":"Barbados","continent":"North America"},{"iso2":"BN","iso3":"BRN","eng":"Brunei","continent":"Asia"},{"iso2":"BT","iso3":"BTN","eng":"Bhutan","continent":"Asia"},{"iso2":"BW","iso3":"BWA","eng":"Botswana","continent":"Africa"},{"iso2":"CF","iso3":"CAF","eng":"Central African Republic","continent":"Africa"},{"iso2":"CA","iso3":"CAN","eng":"Canada","continent":"North America"},{"iso2":"CH","iso3":"CHE","eng":"Switzerland","continent":"Europe"},{"iso2":"CL","iso3":"CHL","eng":"Chile","continent":"South America"},{"iso2":"CN","iso3":"CHN","eng":"China","continent":"Asia"},{"iso2":"CI","iso3":"CIV","eng":"Ivory Coast","continent":"Africa"},{"iso2":"CM","iso3":"CMR","eng":"Cameroon","continent":"Africa"},{"iso2":"CD","iso3":"COD","eng":"DR Congo","continent":"Africa"},{"iso2":"CG","iso3":"COG","eng":"Congo","continent":"Africa"},{"iso2":"CO","iso3":"COL","eng":"Colombia","continent":"South America"},{"iso2":"KM","iso3":"COM","eng":"Comoros","continent":"Africa"},{"iso2":"CV","iso3":"CPV","eng":"Cape Verde","continent":"Africa"},{"iso2":"CR","iso3":"CRI","eng":"Costa Rica","continent":"North America"},{"iso2":"CU","iso3":"CUB","eng":"Cuba","continent":"North America"},{"iso2":"CW","iso3":"CUW","eng":"Curaçao","continent":"North America"},{"iso2":"KY","iso3":"CYM","eng":"Cayman Islands","continent":"North America"},{"iso2":"CY","iso3":"CYP","eng":"Cyprus","continent":"Asia"},{"iso2":"CZ","iso3":"CZE","eng":"Czechia","continent":"Europe"},{"iso2":"DE","iso3":"DEU","eng":"Germany","continent":"Europe"},{"iso2":"DJ","iso3":"DJI","eng":"Djibouti","continent":"Africa"},{"iso2":"DM","iso3":"DMA","eng":"Dominica","continent":"North America"},{"iso2":"DK","iso3":"DNK","eng":"Denmark","continent":"Europe"},{"iso2":"DO","iso3":"DOM","eng":"Dominican Republic","continent":"North America"},{"iso2":"DZ","iso3":"DZA","eng":"Algeria","continent":"Africa"},{"iso2":"EC","iso3":"ECU","eng":"Ecuador","continent":"South America"},{"iso2":"EG","iso3":"EGY","eng":"Egypt","continent":"Africa"},{"iso2":"ER","iso3":"ERI","eng":"Eritrea","continent":"Africa"},{"iso2":"ES","iso3":"ESP","eng":"Spain","continent":"Europe"},{"iso2":"EE","iso3":"EST","eng":"Estonia","continent":"Europe"},{"iso2":"ET","iso3":"ETH","eng":"Ethiopia","continent":"Africa"},{"iso2":"FI","iso3":"FIN","eng":"Finland","continent":"Europe"},{"iso2":"FJ","iso3":"FJI","eng":"Fiji","continent":"Oceania"},{"iso2":"FR","iso3":"FRA","eng":"France","continent":"Europe"},{"iso2":"FO","iso3":"FRO","eng":"Faroe Islands","continent":"Europe"},{"iso2":"FM","iso3":"FSM","eng":"Micronesia","continent":"Oceania"},{"iso2":"GA","iso3":"GAB","eng":"Gabon","continent":"Africa"},{"iso2":"GB","iso3":"GBR","eng":"United Kingdom","continent":"Europe"},{"iso2":"GE","iso3":"GEO","eng":"Georgia","continent":"Asia"},{"iso2":"GH","iso3":"GHA","eng":"Ghana","continent":"Africa"},{"iso2":"GI","iso3":"GIB","eng":"Gibraltar","continent":"Europe"},{"iso2":"GN","iso3":"GIN","eng":"Guinea","continent":"Africa"},{"iso2":"GM","iso3":"GMB","eng":"Gambia","continent":"Africa"},{"iso2":"GW","iso3":"GNB","eng":"Guinea-Bissau","continent":"Africa"},{"iso2":"GQ","iso3":"GNQ","eng":"Equatorial Guinea","continent":"Africa"},{"iso2":"GR","iso3":"GRC","eng":"Greece","continent":"Europe"},{"iso2":"GD","iso3":"GRD","eng":"Grenada","continent":"North America"},{"iso2":"GL","iso3":"GRL","eng":"Greenland","continent":"North America"},{"iso2":"GT","iso3":"GTM","eng":"Guatemala","continent":"North America"},{"iso2":"GU","iso3":"GUM","eng":"Guam","continent":"Oceania"},{"iso2":"GY","iso3":"GUY","eng":"Guyana","continent":"South America"},{"iso2":"HK","iso3":"HKG","eng":"Hong Kong","continent":"Asia"},{"iso2":"HN","iso3":"HND","eng":"Honduras","continent":"North America"},{"iso2":"HR","iso3":"HRV","eng":"Croatia","continent":"Europe"},{"iso2":"HT","iso3":"HTI","eng":"Haiti","continent":"North America"},{"iso2":"HU","iso3":"HUN","eng":"Hungary","continent":"Europe"},{"iso2":"ID","iso3":"IDN","eng":"Indonesia","continent":"Asia"},{"iso2":"IM","iso3":"IMN","eng":"Isle of Man","continent":"Europe"},{"iso2":"IN","iso3":"IND","eng":"India","continent":"Asia"},{"iso2":"IE","iso3":"IRL","eng":"Ireland","continent":"Europe"},{"iso2":"IR","iso3":"IRN","eng":"Iran","continent":"Asia"},{"iso2":"IQ","iso3":"IRQ","eng":"Iraq","continent":"Asia"},{"iso2":"IS","iso3":"ISL","eng":"Iceland","continent":"Europe"},{"iso2":"IL","iso3":"ISR","eng":"Israel","continent":"Asia"},{"iso2":"IT","iso3":"ITA","eng":"Italy","continent":"Europe"},{"iso2":"JM","iso3":"JAM","eng":"Jamaica","continent":"North America"},{"iso2":"JO","iso3":"JOR","eng":"Jordan","continent":"Asia"},{"iso2":"JP","iso3":"JPN","eng":"Japan","continent":"Asia"},{"iso2":"KZ","iso3":"KAZ","eng":"Kazakhstan","continent":"Asia"},{"iso2":"KE","iso3":"KEN","eng":"Kenya","continent":"Africa"},{"iso2":"KG","iso3":"KGZ","eng":"Kyrgyzstan","continent":"Asia"},{"iso2":"KH","iso3":"KHM","eng":"Cambodia","continent":"Asia"},{"iso2":"KI","iso3":"KIR","eng":"Kiribati","continent":"Oceania"},{"iso2":"KN","iso3":"KNA","eng":"Saint Kitts and Nevis","continent":"North America"},{"iso2":"KR","iso3":"KOR","eng":"South Korea","continent":"Asia"},{"iso2":"XK","iso3":"UNK","eng":"Kosovo","continent":"Europe"},{"iso2":"KW","iso3":"KWT","eng":"Kuwait","continent":"Asia"},{"iso2":"LA","iso3":"LAO","eng":"Laos","continent":"Asia"},{"iso2":"LB","iso3":"LBN","eng":"Lebanon","continent":"Asia"},{"iso2":"LR","iso3":"LBR","eng":"Liberia","continent":"Africa"},{"iso2":"LY","iso3":"LBY","eng":"Libya","continent":"Africa"},{"iso2":"LC","iso3":"LCA","eng":"Saint Lucia","continent":"North America"},{"iso2":"LI","iso3":"LIE","eng":"Liechtenstein","continent":"Europe"},{"iso2":"LK","iso3":"LKA","eng":"Sri Lanka","continent":"Asia"},{"iso2":"LS","iso3":"LSO","eng":"Lesotho","continent":"Africa"},{"iso2":"LT","iso3":"LTU","eng":"Lithuania","continent":"Europe"},{"iso2":"LU","iso3":"LUX","eng":"Luxembourg","continent":"Europe"},{"iso2":"LV","iso3":"LVA","eng":"Latvia","continent":"Europe"},{"iso2":"MO","iso3":"MAC","eng":"Macau","continent":"Asia"},{"iso2":"MF","iso3":"MAF","eng":"Saint Martin","continent":"North America"},{"iso2":"MA","iso3":"MAR","eng":"Morocco","continent":"Africa"},{"iso2":"MC","iso3":"MCO","eng":"Monaco","continent":"Europe"},{"iso2":"MD","iso3":"MDA","eng":"Moldova","continent":"Europe"},{"iso2":"MG","iso3":"MDG","eng":"Madagascar","continent":"Africa"},{"iso2":"MV","iso3":"MDV","eng":"Maldives","continent":"Asia"},{"iso2":"MX","iso3":"MEX","eng":"Mexico","continent":"North America"},{"iso2":"MH","iso3":"MHL","eng":"Marshall Islands","continent":"Oceania"},{"iso2":"MK","iso3":"MKD","eng":"North Macedonia","continent":"Europe"},{"iso2":"ML","iso3":"MLI","eng":"Mali","continent":"Africa"},{"iso2":"MT","iso3":"MLT","eng":"Malta","continent":"Europe"},{"iso2":"MM","iso3":"MMR","eng":"Myanmar","continent":"Asia"},{"iso2":"ME","iso3":"MNE","eng":"Montenegro","continent":"Europe"},{"iso2":"MN","iso3":"MNG","eng":"Mongolia","continent":"Asia"},{"iso2":"MP","iso3":"MNP","eng":"Northern Mariana Islands","continent":"Oceania"},{"iso2":"MZ","iso3":"MOZ","eng":"Mozambique","continent":"Africa"},{"iso2":"MR","iso3":"MRT","eng":"Mauritania","continent":"Africa"},{"iso2":"MU","iso3":"MUS","eng":"Mauritius","continent":"Africa"},{"iso2":"MW","iso3":"MWI","eng":"Malawi","continent":"Africa"},{"iso2":"MY","iso3":"MYS","eng":"Malaysia","continent":"Asia"},{"iso2":"NA","iso3":"NAM","eng":"Namibia","continent":"Africa"},{"iso2":"NC","iso3":"NCL","eng":"New Caledonia","continent":"Oceania"},{"iso2":"NE","iso3":"NER","eng":"Niger","continent":"Africa"},{"iso2":"NG","iso3":"NGA","eng":"Nigeria","continent":"Africa"},{"iso2":"NI","iso3":"NIC","eng":"Nicaragua","continent":"North America"},{"iso2":"NL","iso3":"NLD","eng":"Netherlands","continent":"Europe"},{"iso2":"NO","iso3":"NOR","eng":"Norway","continent":"Europe"},{"iso2":"NP","iso3":"NPL","eng":"Nepal","continent":"Asia"},{"iso2":"NR","iso3":"NRU","eng":"Nauru","continent":"Oceania"},{"iso2":"NZ","iso3":"NZL","eng":"New Zealand","continent":"Oceania"},{"iso2":"OM","iso3":"OMN","eng":"Oman","continent":"Asia"},{"iso2":"PK","iso3":"PAK","eng":"Pakistan","continent":"Asia"},{"iso2":"PA","iso3":"PAN","eng":"Panama","continent":"North America"},{"iso2":"PE","iso3":"PER","eng":"Peru","continent":"South America"},{"iso2":"PH","iso3":"PHL","eng":"Philippines","continent":"Asia"},{"iso2":"PW","iso3":"PLW","eng":"Palau","continent":"Oceania"},{"iso2":"PG","iso3":"PNG","eng":"Papua New Guinea","continent":"Oceania"},{"iso2":"PL","iso3":"POL","eng":"Poland","continent":"Europe"},{"iso2":"PR","iso3":"PRI","eng":"Puerto Rico","continent":"North America"},{"iso2":"KP","iso3":"PRK","eng":"North Korea","continent":"Asia"},{"iso2":"PT","iso3":"PRT","eng":"Portugal","continent":"Europe"},{"iso2":"PY","iso3":"PRY","eng":"Paraguay","continent":"South America"},{"iso2":"PS","iso3":"PSE","eng":"Palestine","continent":"Asia"},{"iso2":"PF","iso3":"PYF","eng":"French Polynesia","continent":"Oceania"},{"iso2":"QA","iso3":"QAT","eng":"Qatar","continent":"Asia"},{"iso2":"RO","iso3":"ROU","eng":"Romania","continent":"Europe"},{"iso2":"RU","iso3":"RUS","eng":"Russia","continent":"Europe"},{"iso2":"RW","iso3":"RWA","eng":"Rwanda","continent":"Africa"},{"iso2":"SA","iso3":"SAU","eng":"Saudi Arabia","continent":"Asia"},{"iso2":"SD","iso3":"SDN","eng":"Sudan","continent":"Africa"},{"iso2":"SN","iso3":"SEN","eng":"Senegal","continent":"Africa"},{"iso2":"SG","iso3":"SGP","eng":"Singapore","continent":"Asia"},{"iso2":"SB","iso3":"SLB","eng":"Solomon Islands","continent":"Oceania"},{"iso2":"SL","iso3":"SLE","eng":"Sierra Leone","continent":"Africa"},{"iso2":"SV","iso3":"SLV","eng":"El Salvador","continent":"North America"},{"iso2":"SM","iso3":"SMR","eng":"San Marino","continent":"Europe"},{"iso2":"SO","iso3":"SOM","eng":"Somalia","continent":"Africa"},{"iso2":"RS","iso3":"SRB","eng":"Serbia","continent":"Europe"},{"iso2":"SS","iso3":"SSD","eng":"South Sudan","continent":"Africa"},{"iso2":"ST","iso3":"STP","eng":"São Tomé and Príncipe","continent":"Africa"},{"iso2":"SR","iso3":"SUR","eng":"Suriname","continent":"South America"},{"iso2":"SK","iso3":"SVK","eng":"Slovakia","continent":"Europe"},{"iso2":"SI","iso3":"SVN","eng":"Slovenia","continent":"Europe"},{"iso2":"SE","iso3":"SWE","eng":"Sweden","continent":"Europe"},{"iso2":"SZ","iso3":"SWZ","eng":"Eswatini","continent":"Africa"},{"iso2":"SX","iso3":"SXM","eng":"Sint Maarten","continent":"North America"},{"iso2":"SC","iso3":"SYC","eng":"Seychelles","continent":"Africa"},{"iso2":"SY","iso3":"SYR","eng":"Syria","continent":"Asia"},{"iso2":"TC","iso3":"TCA","eng":"Turks and Caicos Islands","continent":"North America"},{"iso2":"TD","iso3":"TCD","eng":"Chad","continent":"Africa"},{"iso2":"TG","iso3":"TGO","eng":"Togo","continent":"Africa"},{"iso2":"TH","iso3":"THA","eng":"Thailand","continent":"Asia"},{"iso2":"TJ","iso3":"TJK","eng":"Tajikistan","continent":"Asia"},{"iso2":"TM","iso3":"TKM","eng":"Turkmenistan","continent":"Asia"},{"iso2":"TL","iso3":"TLS","eng":"Timor-Leste","continent":"Asia"},{"iso2":"TO","iso3":"TON","eng":"Tonga","continent":"Oceania"},{"iso2":"TT","iso3":"TTO","eng":"Trinidad and Tobago","continent":"North America"},{"iso2":"TN","iso3":"TUN","eng":"Tunisia","continent":"Africa"},{"iso2":"TR","iso3":"TUR","eng":"Türkiye","continent":"Asia"},{"iso2":"TV","iso3":"TUV","eng":"Tuvalu","continent":"Oceania"},{"iso2":"TZ","iso3":"TZA","eng":"Tanzania","continent":"Africa"},{"iso2":"UG","iso3":"UGA","eng":"Uganda","continent":"Africa"},{"iso2":"UA","iso3":"UKR","eng":"Ukraine","continent":"Europe"},{"iso2":"UY","iso3":"URY","eng":"Uruguay","continent":"South America"},{"iso2":"US","iso3":"USA","eng":"United States","continent":"North America"},{"iso2":"UZ","iso3":"UZB","eng":"Uzbekistan","continent":"Asia"},{"iso2":"VC","iso3":"VCT","eng":"Saint Vincent and the Grenadines","continent":"North America"},{"iso2":"VE","iso3":"VEN","eng":"Venezuela","continent":"South America"},{"iso2":"VG","iso3":"VGB","eng":"British Virgin Islands","continent":"North America"},{"iso2":"VI","iso3":"VIR","eng":"United States Virgin Islands","continent":"North America"},{"iso2":"VN","iso3":"VNM","eng":"Vietnam","continent":"Asia"},{"iso2":"VU","iso3":"VUT","eng":"Vanuatu","continent":"Oceania"},{"iso2":"WS","iso3":"WSM","eng":"Samoa","continent":"Oceania"},{"iso2":"YE","iso3":"YEM","eng":"Yemen","continent":"Asia"},{"iso2":"ZA","iso3":"ZAF","eng":"South Africa","continent":"Africa"},{"iso2":"ZM","iso3":"ZMB","eng":"Zambia","continent":"Africa"},{"iso2":"ZW","iso3":"ZWE","eng":"Zimbabwe","continent":"Africa"}] ;
 
 
 // ── Embedded world GeoJSON (Natural Earth 110m, slimmed)
@@ -169,7 +195,7 @@ const INDICATORS = [
 const S = {
   selectedA: null,
   selectedB: null,
-  geoLayers: {},     // iso3 → leaflet layer
+  geoLayers: {},     // iso3 → <path> element
   sortedCountries: [], // sorted by name
 };
 
@@ -181,8 +207,11 @@ function flagEmoji(iso2) {
   return [...iso2.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('');
 }
 
+const CONTINENT_ORDER = ['Africa', 'Asia', 'Europe', 'North America', 'Oceania', 'South America'];
+
 function buildSorted() {
   S.sortedCountries = [...COUNTRY_META].sort((a, b) =>
+    CONTINENT_ORDER.indexOf(a.continent) - CONTINENT_ORDER.indexOf(b.continent) ||
     a.eng.localeCompare(b.eng)
   );
 }
@@ -217,30 +246,23 @@ function fmtLE(v)   { return v.toFixed(1)+' yrs'; }
 // ─────────────────────────────────────────────
 //  MAP INIT
 // ─────────────────────────────────────────────
-const map = L.map('map', {
-  center: [20, 0], zoom: 2, minZoom: 2, maxZoom: 7,
-  zoomControl: false, worldCopyJump: true,
-});
+const MAP_W = 960, MAP_H = 500;
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-  attribution: '© OpenStreetMap © CARTO', maxZoom: 19, subdomains: 'abcd',
-}).addTo(map);
+const svg = d3.select('#map');
+const g = svg.append('g');
+const projection = d3.geoEqualEarth().fitSize([MAP_W, MAP_H], WORLD_GEO);
+const pathGen = d3.geoPath(projection);
 
-L.control.zoom({ position: 'topright' }).addTo(map);
+const zoomBehavior = d3.zoom()
+  .scaleExtent([1, 8])
+  .on('zoom', (event) => {
+    g.attr('transform', event.transform);
+    updateLabelZoom(event.transform.k);
+    g.selectAll('text.country-label')
+      .attr('transform', d => `translate(${pathGen.centroid(d)}) scale(${1 / event.transform.k})`);
+  });
 
-let geoLayer;
-
-function styleDefault() {
-  return { fillColor:'#1e3a4a', fillOpacity:0.4, color:'#2a4a5e', weight:0.8 };
-}
-function styleHover() {
-  return { fillColor:'#4a9ab5', fillOpacity:0.65, color:'#6bc8e0', weight:1.5 };
-}
-function styleSelected(slot) {
-  return slot === 'a'
-    ? { fillColor:'#00d4ff', fillOpacity:0.45, color:'#00d4ff', weight:2 }
-    : { fillColor:'#ff6b35', fillOpacity:0.45, color:'#ff6b35', weight:2 };
-}
+svg.call(zoomBehavior);
 
 function getGeoName(feature) {
   const props = feature.properties;
@@ -254,51 +276,88 @@ function getIso3(feature) {
   return iso;
 }
 
-function onEachFeature(feature, layer) {
+function onCountryClick(event, feature) {
   const iso3 = getIso3(feature);
-  if (iso3) S.geoLayers[iso3] = layer;
-
-  layer.on({
-    mouseover(e) {
-      const l = e.target;
-      const isA = S.selectedA?.iso3 === iso3;
-      const isB = S.selectedB?.iso3 === iso3;
-      if (!isA && !isB) l.setStyle(styleHover());
-      const name = getGeoName(feature);
-      layer.bindTooltip(name, { sticky:true, className:'leaflet-tooltip' }).openTooltip();
-    },
-    mouseout(e) {
-      geoLayer.resetStyle(e.target);
-      restyleSelected();
-    },
-    click() {
-      const meta = S.sortedCountries.find(c => c.iso3 === iso3)
-                || COUNTRY_META.find(c => c.iso3 === iso3);
-      if (meta) selectCountry(meta);
-      else console.warn('No meta for iso3:', iso3, feature.properties);
-    }
-  });
+  const meta = S.sortedCountries.find(c => c.iso3 === iso3)
+            || COUNTRY_META.find(c => c.iso3 === iso3);
+  if (meta) selectCountry(meta);
+  else console.warn('No meta for iso3:', iso3, feature.properties);
 }
 
 function restyleSelected() {
-  if (!geoLayer) return;
-  geoLayer.resetStyle();
+  g.selectAll('.country-path').classed('selected-a', false).classed('selected-b', false);
   if (S.selectedA) {
-    const l = S.geoLayers[S.selectedA.iso3];
-    if (l) l.setStyle(styleSelected('a'));
+    const el = S.geoLayers[S.selectedA.iso3];
+    if (el) el.classList.add('selected-a');
   }
   if (S.selectedB) {
-    const l = S.geoLayers[S.selectedB.iso3];
-    if (l) l.setStyle(styleSelected('b'));
+    const el = S.geoLayers[S.selectedB.iso3];
+    if (el) el.classList.add('selected-b');
   }
 }
 
 function initGeoLayer() {
-  geoLayer = L.geoJSON(WORLD_GEO, {
-    style: styleDefault,
-    onEachFeature,
-  }).addTo(map);
+  g.selectAll('path.country-path')
+    .data(WORLD_GEO.features)
+    .join('path')
+    .attr('class', 'country-path')
+    .attr('d', pathGen)
+    .each(function(d) {
+      const iso3 = getIso3(d);
+      if (iso3) S.geoLayers[iso3] = this;
+    })
+    .on('click', onCountryClick);
+
+  g.selectAll('text.country-label')
+    .data(WORLD_GEO.features)
+    .join('text')
+    .attr('class', 'country-label')
+    .attr('transform', d => `translate(${pathGen.centroid(d)})`)
+    .text(getGeoName);
+
+  updateLabelZoom(1);
 }
+
+function updateLabelZoom(k) {
+  const el = document.getElementById('map');
+  el.classList.toggle('zoom-far', k < 2);
+  el.classList.toggle('zoom-near', k >= 4);
+}
+
+function zoomTransformForBounds(bounds, padding) {
+  const [[x0, y0], [x1, y1]] = bounds;
+  const dx = Math.max(x1 - x0, 1), dy = Math.max(y1 - y0, 1);
+  const x = (x0 + x1) / 2, y = (y0 + y1) / 2;
+  const scale = Math.max(1, Math.min(8, Math.min((MAP_W - 2 * padding) / dx, (MAP_H - 2 * padding) / dy)));
+  return d3.zoomIdentity.translate(MAP_W / 2, MAP_H / 2).scale(scale).translate(-x, -y);
+}
+
+function fitToSelection() {
+  const feats = [];
+  if (S.selectedA) { const el = S.geoLayers[S.selectedA.iso3]; if (el) feats.push(el.__data__); }
+  if (S.selectedB) { const el = S.geoLayers[S.selectedB.iso3]; if (el) feats.push(el.__data__); }
+
+  if (!S.selectedA && !S.selectedB) {
+    svg.transition().duration(600).call(zoomBehavior.transform, d3.zoomIdentity);
+    return;
+  }
+  if (feats.length === 0) return; // selected countries have no map shape to fit to
+
+  const boundsList = feats.map(f => pathGen.bounds(f));
+  const x0 = Math.min(...boundsList.map(b => b[0][0]));
+  const y0 = Math.min(...boundsList.map(b => b[0][1]));
+  const x1 = Math.max(...boundsList.map(b => b[1][0]));
+  const y1 = Math.max(...boundsList.map(b => b[1][1]));
+
+  svg.transition().duration(600).call(zoomBehavior.transform, zoomTransformForBounds([[x0, y0], [x1, y1]], 40));
+}
+
+document.getElementById('zoom-in').addEventListener('click', () => {
+  svg.transition().duration(300).call(zoomBehavior.scaleBy, 1.5);
+});
+document.getElementById('zoom-out').addEventListener('click', () => {
+  svg.transition().duration(300).call(zoomBehavior.scaleBy, 0.67);
+});
 
 // ─────────────────────────────────────────────
 //  COUNTRY LIST
@@ -319,7 +378,16 @@ function renderList(filter) {
   }
 
   const frag = document.createDocumentFragment();
+  let lastContinent = null;
   filtered.slice(0, 300).forEach(c => {
+    if (c.continent !== lastContinent) {
+      lastContinent = c.continent;
+      const header = document.createElement('div');
+      header.className = 'continent-header';
+      header.textContent = lastContinent;
+      frag.appendChild(header);
+    }
+
     const isA = S.selectedA?.iso3 === c.iso3;
     const isB = S.selectedB?.iso3 === c.iso3;
 
@@ -367,6 +435,7 @@ function updateUI() {
   renderList(document.getElementById('search-input').value);
   restyleSelected();
   updateComparePanel();
+  fitToSelection();
 }
 
 function updatePills() {
@@ -508,16 +577,17 @@ function renderCompareStats(dA, dB) {
     const vA = eA?.value ?? null, vB = eB?.value ?? null;
     const hasA = vA !== null, hasB = vB !== null, both = hasA && hasB;
 
-    let barA = 0, barB = 0, ratioStr = '';
+    let barA = 0, barB = 0, badgeA = '', badgeB = '';
     if (both) {
       const total = vA + vB;
       barA = (vA / total) * 50;
       barB = (vB / total) * 50;
       if (vA !== vB) {
         const bigger = vA > vB ? 'A' : 'B';
-        const ratio = bigger === 'A' ? (vA/vB).toFixed(1) : (vB/vA).toFixed(1);
-        ratioStr = ratio + '× ' + (bigger === 'A' ? 'A larger' : 'B larger');
-      } else ratioStr = 'Equal';
+        const ratio = (bigger === 'A' ? vA/vB : vB/vA).toFixed(1);
+        const badge = '<span class="stat-ratio-badge side-'+bigger.toLowerCase()+'"><span class="arrow">▲</span>'+ratio+'×</span>';
+        if (bigger === 'A') badgeA = badge; else badgeB = badge;
+      }
     } else {
       if (hasA) barA = 40;
       if (hasB) barB = 40;
@@ -531,16 +601,21 @@ function renderCompareStats(dA, dB) {
     return `<div class="stat-row">
       <div class="stat-label">
         <span>${ind.label}${ind.note ? ' <span style="opacity:.5;font-size:9px">'+ind.note+'</span>' : ''}</span>
-        ${ratioStr ? '<span class="stat-ratio">'+ratioStr+'</span>' : ''}
       </div>
       <div class="stat-bar-wrap">
-        <div class="stat-val right" title="${sA+yA}">${sA}</div>
+        <div class="stat-side stat-side-a">
+          ${badgeA}
+          <div class="stat-val" title="${sA+yA}">${sA}</div>
+        </div>
         <div class="bar-track">
           <div class="bar-center"></div>
           <div class="bar-fill-a" style="width:0%" data-w="${barA}"></div>
           <div class="bar-fill-b" style="width:0%" data-w="${barB}"></div>
         </div>
-        <div class="stat-val" title="${sB+yB}">${sB}</div>
+        <div class="stat-side stat-side-b">
+          ${badgeB}
+          <div class="stat-val" title="${sB+yB}">${sB}</div>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -559,6 +634,19 @@ function renderCompareStats(dA, dB) {
     });
   });
 }
+
+// ─────────────────────────────────────────────
+//  SIDEBAR COLLAPSE
+// ─────────────────────────────────────────────
+const sidebarEl = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+
+sidebarToggle.addEventListener('click', () => {
+  const collapsed = sidebarEl.classList.toggle('collapsed');
+  sidebarToggle.classList.toggle('collapsed', collapsed);
+  sidebarToggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
+});
 
 // ─────────────────────────────────────────────
 //  BOOT
